@@ -71,7 +71,12 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 		}
 		switch msg.Type {
 		case MSG_SDP:
-			peer.OfferHandler(msg.Data)
+			//Add peer to stantion
+			newPeer, err := peer.OfferHandler(msg.Data)
+			if err != nil {
+				st.Add(newPeer)
+			}
+
 		case MSG_ICE:
 			peer.IceHandler(msg.Ice)
 		case MSG_ERROR:

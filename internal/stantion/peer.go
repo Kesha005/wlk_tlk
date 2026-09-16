@@ -32,7 +32,7 @@ func NewRawPeer(id string) *OnePeer {
 	}
 }
 
-func (p *OnePeer) OfferHandler(offer string) {
+func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 
 	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 
@@ -42,7 +42,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err
 	}
 	audiotrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
 		MimeType: webrtc.MimeTypeOpus,
@@ -54,7 +54,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err
 	}
 
 	sender, err := pc.AddTrack(audiotrack)
@@ -65,7 +65,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err 
 	}
 	p.PC = pc
 	p.Sender = sender
@@ -82,7 +82,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err
 	}
 
 
@@ -100,7 +100,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err
 	}
 
 	err = pc.SetLocalDescription(answer)
@@ -111,7 +111,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 			Data: err.Error(),
 		})
 
-		return
+		return nil,err
 	}
 
 	//TODO handle closed conn write error
@@ -119,6 +119,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 		Type: MSG_ANSWER,
 		Data: pc.LocalDescription().SDP,
 	})
+	return p,err
 }
 
 func (p *OnePeer) IceHandler(ice *webrtc.ICECandidateInit) {
