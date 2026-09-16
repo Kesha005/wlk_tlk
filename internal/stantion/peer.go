@@ -22,6 +22,7 @@ type OnePeer struct {
 
 	ws         *websocket.Conn
 	mu         sync.Mutex
+	Stantion *Stantion
 	speaking   bool
 }
 
@@ -164,4 +165,29 @@ func (p *OnePeer) RunStateControl() {
 		}
 	})
 
+}
+
+
+
+
+func (p *OnePeer)Speak(){
+	p.mu.Lock()
+	p.speaking=true
+	p.mu.Unlock()
+	p.Stantion.SpeakStart(p.Id)
+}
+
+
+func(p *OnePeer)StartSpeak(){
+	if !p.Stantion.CanSpeak(p.Id){
+		p.Speak()
+	}else{	
+		return 
+	}
+}
+
+func(p *OnePeer)IsSpeaking()bool{
+	 p.mu.Lock()
+    defer p.mu.Unlock()
+    return p.speaking
 }

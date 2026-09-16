@@ -72,7 +72,10 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 		switch msg.Type {
 		case MSG_SDP:
 			//Add peer to stantion
+			
 			newPeer, err := peer.OfferHandler(msg.Data)
+			//Add there stantion of peer
+			newPeer.Stantion = st
 			if err != nil {
 				st.Add(newPeer)
 			}
@@ -83,9 +86,12 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 			fmt.Println(msg.Data)
 			return
 		case MSG_SPEAK_END:
-			//TODO handle spek
-		case MSG_SPEAK_START:
 			//TODO handle stop
+		case MSG_SPEAK_START:
+
+			//TODO handle speak
+			
+			peer.StartSpeak()
 
 		}
 
