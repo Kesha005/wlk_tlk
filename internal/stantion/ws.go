@@ -75,8 +75,12 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 		case MSG_ICE:
 			peer.IceHandler(msg.Ice)
 		case MSG_ERROR:
+			fmt.Println(msg.Data)
+			return
 		case MSG_SPEAK_END:
+			//TODO handle spek
 		case MSG_SPEAK_START:
+			//TODO handle stop
 
 		}
 

@@ -10,8 +10,16 @@ import (
 type OnePeer struct {
 	Id         string
 	PC         *webrtc.PeerConnection
-	AudioTrack *webrtc.TrackLocalStaticRTP
+
+	//This track which i receive from browser it will be forwarded to other peers
+	RemoteTrack *webrtc.TrackRemote
+
+	//This is local track which i write from other peers to listen on browser
+	LocalTrack *webrtc.TrackLocalStaticRTP
+
+	//Local track sender 
 	Sender     *webrtc.RTPSender
+
 	ws         *websocket.Conn
 	mu         sync.Mutex
 	speaking   bool
@@ -61,7 +69,7 @@ func (p *OnePeer) OfferHandler(offer string) {
 	}
 	p.PC = pc
 	p.Sender = sender
-	p.AudioTrack = audiotrack
+	p.LocalTrack = p.LocalTrack
 
 	err = pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
@@ -77,7 +85,12 @@ func (p *OnePeer) OfferHandler(offer string) {
 		return
 	}
 
-	sender.Stop()
+
+
+	//TODO this will be handled differently it handle remote track on struct to access it from other places
+	pc.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
+		p.RemoteTrack = tr
+	})
 
 	answer, err := pc.CreateAnswer(nil)
 
