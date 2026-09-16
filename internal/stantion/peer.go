@@ -1,6 +1,8 @@
 package stantion
 
 import (
+	"errors"
+	"io"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -8,22 +10,23 @@ import (
 )
 
 type OnePeer struct {
-	Id         string
-	PC         *webrtc.PeerConnection
+	Id string
+	PC *webrtc.PeerConnection
 
 	//This track which i receive from browser it will be forwarded to other peers
 	RemoteTrack *webrtc.TrackRemote
 
-	//This is local track which i write from other peers to listen on browser
+	//This is local track which other peers, only speaker writes (half duplex)
+	//While peer state is not speaking, his rtp packets not will write
 	LocalTrack *webrtc.TrackLocalStaticRTP
 
-	//Local track sender 
-	Sender     *webrtc.RTPSender
+	//Local track sender
+	Sender *webrtc.RTPSender
 
-	ws         *websocket.Conn
-	mu         sync.Mutex
+	ws       *websocket.Conn
+	mu       sync.Mutex
 	Stantion *Stantion
-	speaking   bool
+	speaking bool
 }
 
 func NewRawPeer(id string) *OnePeer {
@@ -33,7 +36,7 @@ func NewRawPeer(id string) *OnePeer {
 	}
 }
 
-func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
+func (p *OnePeer) OfferHandler(offer string) (*OnePeer, error) {
 
 	pc, err := webrtc.NewPeerConnection(webrtc.Configuration{})
 
@@ -43,7 +46,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err
+		return nil, err
 	}
 	audiotrack, err := webrtc.NewTrackLocalStaticRTP(webrtc.RTPCodecCapability{
 		MimeType: webrtc.MimeTypeOpus,
@@ -55,7 +58,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err
+		return nil, err
 	}
 
 	sender, err := pc.AddTrack(audiotrack)
@@ -66,7 +69,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err 
+		return nil, err
 	}
 	p.PC = pc
 	p.Sender = sender
@@ -83,14 +86,15 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err
+		return nil, err
 	}
-
-
 
 	//TODO this will be handled differently it handle remote track on struct to access it from other places
 	pc.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		p.RemoteTrack = tr
+		if tr != nil {
+			p.RemoteTrack = tr
+		}
+
 	})
 
 	answer, err := pc.CreateAnswer(nil)
@@ -101,7 +105,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err
+		return nil, err
 	}
 
 	err = pc.SetLocalDescription(answer)
@@ -112,7 +116,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 			Data: err.Error(),
 		})
 
-		return nil,err
+		return nil, err
 	}
 
 	//TODO handle closed conn write error
@@ -120,7 +124,7 @@ func (p *OnePeer) OfferHandler(offer string)(*OnePeer,error) {
 		Type: MSG_ANSWER,
 		Data: pc.LocalDescription().SDP,
 	})
-	return p,err
+	return p, err
 }
 
 func (p *OnePeer) IceHandler(ice *webrtc.ICECandidateInit) {
@@ -140,6 +144,7 @@ func (p *OnePeer) IceHandler(ice *webrtc.ICECandidateInit) {
 	}
 }
 
+// Peer state control will be used to log or ice status chekcking and controlling
 func (p *OnePeer) RunStateControl() {
 
 	p.PC.OnICECandidate(func(i *webrtc.ICECandidate) {
@@ -165,29 +170,62 @@ func (p *OnePeer) RunStateControl() {
 		}
 	})
 
+	go func() {
+		p.forwardLoop()
+	}()
+
 }
 
+func (p *OnePeer) forwardLoop() {
 
+	if p.RemoteTrack != nil {
+		for {
+			rtp, _, err := p.RemoteTrack.ReadRTP()
+			if err != nil && !errors.Is(err, io.EOF) {
+				p.ws.WriteJSON(&WsMessage{
+					Type: MSG_ERROR,
+					Data: err.Error(),
+				})
+				return
+			}
 
+			if !p.IsSpeaking() {
+				continue
+			}
+			peers := p.Stantion.All()
 
-func (p *OnePeer)Speak(){
+			for _, peer := range peers {
+
+				if peer.LocalTrack != nil {
+					if p.Id == peer.Id {
+						continue
+					}
+					peer.LocalTrack.WriteRTP(rtp)
+
+				}
+			}
+		}
+
+	}
+}
+
+func (p *OnePeer) Speak() {
 	p.mu.Lock()
-	p.speaking=true
+	p.speaking = true
 	p.mu.Unlock()
 	p.Stantion.SpeakStart(p.Id)
 }
 
-
-func(p *OnePeer)StartSpeak(){
-	if !p.Stantion.CanSpeak(p.Id){
+func (p *OnePeer) StartSpeak() {
+	if !p.Stantion.CanSpeak(p.Id) {
 		p.Speak()
-	}else{	
-		return 
+	} else {
+		return
 	}
 }
 
-func(p *OnePeer)IsSpeaking()bool{
-	 p.mu.Lock()
-    defer p.mu.Unlock()
-    return p.speaking
+func (p *OnePeer) IsSpeaking() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.speaking
 }
