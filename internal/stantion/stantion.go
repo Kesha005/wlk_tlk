@@ -20,6 +20,7 @@ type Stantion struct{
 func NewStantion()*Stantion{
 	return &Stantion{
 		Peers: make(map[string]*OnePeer),
+		
 	}
 }
 
@@ -42,4 +43,25 @@ func (st *Stantion)Remove(){
 func (st *Stantion)All(){
 	
 }
+func (st *Stantion) PeerCount() int {
+    st.mu.RLock()
+    defer st.mu.RUnlock()
+    return len(st.Peers)
+}
 
+
+func (st *Stantion)SpeakStart(speakerId string){
+	st.speakingMu.Lock()
+	if st.speaking!=""{
+		st.speakingMu.Unlock()
+		return 
+	}
+	st.speaking = speakerId
+	st.speakingMu.Unlock()
+}
+
+func (s *Stantion)CanSpeak(speakerId string)bool{
+	s.speakingMu.Lock()
+	defer s.speakingMu.Unlock()
+	return s.speaking==speakerId || s.speaking==""
+}
