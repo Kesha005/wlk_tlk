@@ -209,19 +209,28 @@ func (p *OnePeer) forwardLoop() {
 	}
 }
 
-func (p *OnePeer) Speak() {
+func (p *OnePeer) speak() {
 	p.mu.Lock()
 	p.speaking = true
 	p.mu.Unlock()
 	p.Stantion.SpeakStart(p.Id)
 }
 
+
 func (p *OnePeer) StartSpeak() {
 	if !p.Stantion.CanSpeak(p.Id) {
-		p.Speak()
+		p.speak()
 	} else {
 		return
 	}
+}
+
+
+func (p *OnePeer)EndSpeak(){
+	p.mu.Lock()
+	p.speaking=false
+	p.mu.Unlock()
+	p.Stantion.SpeakEnd(p.Id)
 }
 
 func (p *OnePeer) IsSpeaking() bool {

@@ -9,8 +9,7 @@ func TestSpeakerStart(t *testing.T) {
 	peer := NewRawPeer("id")
 	stantion.Add(peer)
 	peer.Stantion = stantion
-	peer.Speak()
-
+	peer.StartSpeak()
 	if !peer.speaking {
 		t.Error("Peer must be speaking")
 		return
@@ -28,7 +27,7 @@ func TestSpeakerDublicate(t *testing.T) {
 	peer := NewRawPeer("id")
 	stantion.Add(peer)
 	peer.Stantion = stantion
-	peer.Speak()
+	peer.StartSpeak()
 
 	peer2 := NewRawPeer("id2")
 	stantion.Add(peer2)
@@ -41,7 +40,7 @@ func TestSpeakerDublicate(t *testing.T) {
 
 	ok := stantion.CanSpeak(peer2.Id)
 	if ok {
-		peer2.Speak()
+		peer.StartSpeak()
 	}
 
 	if peer2.IsSpeaking() {

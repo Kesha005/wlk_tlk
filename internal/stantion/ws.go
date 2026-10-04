@@ -91,11 +91,8 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 			fmt.Println(msg.Data)
 			return
 		case MSG_SPEAK_END:
-			//TODO handle stop
+			peer.EndSpeak()
 		case MSG_SPEAK_START:
-
-			//TODO handle speak
-
 			peer.StartSpeak()
 
 		}

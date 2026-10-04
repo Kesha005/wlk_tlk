@@ -60,6 +60,14 @@ func (st *Stantion) SpeakStart(speakerId string) {
 	st.speakingMu.Unlock()
 }
 
+
+func (st *Stantion)SpeakEnd(speakerId string){
+	st.speakingMu.Lock()
+	st.speaking = ""
+	st.speakingMu.Unlock()
+}
+
+
 func (s *Stantion) CanSpeak(speakerId string) bool {
 	s.speakingMu.Lock()
 	defer s.speakingMu.Unlock()
