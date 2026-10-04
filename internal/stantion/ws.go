@@ -9,6 +9,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+
 const (
 	MSG_SDP = "sdp"
 	MSG_ICE = "ice"
@@ -40,6 +41,8 @@ func (st *Stantion) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 
+
+	//need to handle ws connection closing and where to close connection
 	if err != nil {
 		http.Error(w, "Failed to make websocket connection", 500)
 	}
@@ -50,8 +53,7 @@ func (st *Stantion) wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	st.InitPeer(peer)
 
-	defer conn.Close()
-
+	
 }
 
 func (st *Stantion) InitPeer(peer *OnePeer) {
@@ -62,8 +64,9 @@ func (st *Stantion) InitPeer(peer *OnePeer) {
 }
 
 func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
-	var msg WsMessage
+
 	for {
+		var msg WsMessage
 		err := peer.ws.ReadJSON(&msg)
 
 		if err != nil {
@@ -75,14 +78,20 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 
 			newPeer, err := peer.OfferHandler(msg.Data)
 			//Add there stantion of peer
+
+			if err != nil {
+				//TODO return error
+				return
+			}
 			newPeer.Stantion = st
 			go func() {
 				newPeer.RunStateControl()
 			}()
 
-			if err != nil {
-				st.Add(newPeer)
-
+			err =st.Add(newPeer)
+			if err!=nil{
+				//TODO return via websocket
+				fmt.Println(err)
 			}
 
 		case MSG_ICE:
