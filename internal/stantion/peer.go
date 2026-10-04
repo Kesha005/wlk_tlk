@@ -22,7 +22,7 @@ type OnePeer struct {
 
 	//Local track sender
 	Sender *webrtc.RTPSender
-
+	writeMu  sync.Mutex
 	ws       *websocket.Conn
 	mu       sync.Mutex
 	Stantion *Stantion
@@ -35,6 +35,23 @@ func NewRawPeer(id string) *OnePeer {
 		speaking: false,
 	}
 }
+
+func (p *OnePeer) WriteJSON(v any) error {
+	if p.ws == nil {
+		return errors.New("ws is nil")
+	}
+	p.writeMu.Lock()
+	defer p.writeMu.Unlock()
+	return p.ws.WriteJSON(v)
+}
+
+func (p *OnePeer) sendError(err error) {
+	_ = p.WriteJSON(&WsMessage{
+		Type: MSG_ERROR,
+		Data: err.Error(),
+	})
+}
+
 
 func (p *OnePeer) OfferHandler(offer string) (*OnePeer, error) {
 
@@ -72,8 +89,10 @@ func (p *OnePeer) OfferHandler(offer string) (*OnePeer, error) {
 		return nil, err
 	}
 	p.PC = pc
+
+	p.RunStateControl()
 	p.Sender = sender
-	p.LocalTrack = p.LocalTrack
+	p.LocalTrack = audiotrack 
 
 	err = pc.SetRemoteDescription(webrtc.SessionDescription{
 		Type: webrtc.SDPTypeOffer,
@@ -91,11 +110,14 @@ func (p *OnePeer) OfferHandler(offer string) (*OnePeer, error) {
 
 	//TODO this will be handled differently it handle remote track on struct to access it from other places
 	pc.OnTrack(func(tr *webrtc.TrackRemote, r *webrtc.RTPReceiver) {
-		if tr != nil {
-			p.RemoteTrack = tr
+		if tr == nil {
+			return 
 		}
-
+		p.RemoteTrack = tr
+		p.forwardLoop()
 	})
+
+
 
 	answer, err := pc.CreateAnswer(nil)
 
@@ -170,16 +192,15 @@ func (p *OnePeer) RunStateControl() {
 		}
 	})
 
-	go func() {
-		p.forwardLoop()
-	}()
-
 }
 
 func (p *OnePeer) forwardLoop() {
 
-	if p.RemoteTrack != nil {
+	
 		for {
+			if p.RemoteTrack!=nil{
+
+			
 			rtp, _, err := p.RemoteTrack.ReadRTP()
 			if err != nil && !errors.Is(err, io.EOF) {
 				p.ws.WriteJSON(&WsMessage{
@@ -205,8 +226,9 @@ func (p *OnePeer) forwardLoop() {
 				}
 			}
 		}
-
 	}
+
+	
 }
 
 func (p *OnePeer) speak() {
@@ -218,7 +240,7 @@ func (p *OnePeer) speak() {
 
 
 func (p *OnePeer) StartSpeak() {
-	if !p.Stantion.CanSpeak(p.Id) {
+	if p.Stantion.CanSpeak(p.Id) {
 		p.speak()
 	} else {
 		return
@@ -238,3 +260,4 @@ func (p *OnePeer) IsSpeaking() bool {
 	defer p.mu.Unlock()
 	return p.speaking
 }
+

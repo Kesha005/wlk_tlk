@@ -1,6 +1,7 @@
 package stantion
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -52,12 +53,15 @@ func (st *Stantion) PeerCount() int {
 
 func (st *Stantion) SpeakStart(speakerId string) {
 	st.speakingMu.Lock()
+	fmt.Println("Speak start")
 	if st.speaking != "" {
 		st.speakingMu.Unlock()
 		return
 	}
 	st.speaking = speakerId
 	st.speakingMu.Unlock()
+
+	
 }
 
 
@@ -65,6 +69,7 @@ func (st *Stantion)SpeakEnd(speakerId string){
 	st.speakingMu.Lock()
 	st.speaking = ""
 	st.speakingMu.Unlock()
+	fmt.Println("Speak end")
 }
 
 

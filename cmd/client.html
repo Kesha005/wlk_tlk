@@ -26,9 +26,20 @@
     cursor: pointer;
     user-select: none;
     transition: background 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
   }
   button:hover { background: #3a3a3a; }
   button.active { background: #c0392b; }
+  #playBtn {
+    padding: 14px 24px;
+    font-size: 16px;
+    background: #1e3a5f;
+  }
+  #playBtn:hover { background: #2a4d7a; }
+  #playBtn.hidden { display: none; }
   #status {
     font-size: 14px;
     color: #888;
@@ -41,11 +52,13 @@
     overflow-y: auto;
     white-space: pre-wrap;
   }
+  .icon { font-size: 22px; }
 </style>
 </head>
 <body>
 
-<button id="ptt">Hold to Talk</button>
+<button id="ptt"><span class="icon">🎙️</span> Hold to Talk</button>
+<button id="playBtn" class="hidden"><span class="icon">🔊</span> Tap to hear audio</button>
 <div id="status">disconnected</div>
 <div id="log"></div>
 
@@ -60,6 +73,7 @@ const MSG_SPEAK_END   = "s_end";
 const statusEl = document.getElementById("status");
 const logEl    = document.getElementById("log");
 const pttBtn   = document.getElementById("ptt");
+const playBtn  = document.getElementById("playBtn");
 
 function log(...args) {
   console.log(...args);
@@ -70,14 +84,26 @@ function log(...args) {
 let ws;
 let pc;
 let localStream;
-let audioSender;
+let remoteAudio;
+let audioReady = false;
 
 const config = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
 
+function wsSend(obj) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    log("ws not open, dropping", obj.type);
+    return false;
+  }
+  ws.send(JSON.stringify(obj));
+  return true;
+}
+
 async function start() {
   statusEl.textContent = "connecting...";
+  playBtn.classList.add("hidden");
+  audioReady = false;
 
   ws = new WebSocket(`ws://${location.host}/stantion-ws`);
 
@@ -90,6 +116,11 @@ async function start() {
   ws.onclose = () => {
     statusEl.textContent = "disconnected";
     log("ws closed");
+    if (pc) { pc.close(); pc = null; }
+    if (localStream) {
+      localStream.getTracks().forEach(t => t.stop());
+      localStream = null;
+    }
   };
 
   ws.onerror = (e) => log("ws error", e.message || e);
@@ -124,22 +155,23 @@ async function setupPeer() {
   pc = new RTCPeerConnection(config);
 
   localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  audioSender = pc.addTrack(localStream.getAudioTracks()[0], localStream);
+  pc.addTrack(localStream.getAudioTracks()[0], localStream);
 
   pc.onicecandidate = (e) => {
     if (e.candidate) {
-      ws.send(JSON.stringify({
-        type: MSG_ICE,
-        ice: e.candidate.toJSON()
-      }));
+      wsSend({ type: MSG_ICE, ice: e.candidate.toJSON() });
     }
   };
 
   pc.ontrack = (e) => {
-    const audio = new Audio();
-    audio.srcObject = e.streams[0];
-    audio.autoplay = true;
     log("remote track");
+    remoteAudio = new Audio();
+    remoteAudio.srcObject = e.streams[0];
+    remoteAudio.autoplay = true;
+    remoteAudio.playsInline = true;
+
+    playBtn.classList.remove("hidden");
+    statusEl.textContent = "remote audio ready";
   };
 
   pc.onconnectionstatechange = () => {
@@ -149,19 +181,27 @@ async function setupPeer() {
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-
-  ws.send(JSON.stringify({
-    type: MSG_SDP,
-    data: offer.sdp
-  }));
+  wsSend({ type: MSG_SDP, data: offer.sdp });
 }
 
+playBtn.addEventListener("click", async () => {
+  if (!remoteAudio || audioReady) return;
+  try {
+    await remoteAudio.play();
+    audioReady = true;
+    playBtn.classList.add("hidden");
+    statusEl.textContent = "audio playing";
+    log("audio playing");
+  } catch (e) {
+    log("play err", e.message);
+  }
+});
+
 function sendSpeak(start) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({
+  wsSend({
     type: start ? MSG_SPEAK_START : MSG_SPEAK_END,
     data: ""
-  }));
+  });
 }
 
 pttBtn.addEventListener("mousedown", () => {
