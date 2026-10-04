@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Walkie Talkie</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    background: #111;
+    color: #eee;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    gap: 16px;
+  }
+  button {
+    padding: 20px 40px;
+    font-size: 18px;
+    border: none;
+    border-radius: 12px;
+    background: #2a2a2a;
+    color: #eee;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+  }
+  button:hover { background: #3a3a3a; }
+  button.active { background: #c0392b; }
+  #status {
+    font-size: 14px;
+    color: #888;
+  }
+  #log {
+    font-size: 12px;
+    color: #666;
+    max-width: 400px;
+    max-height: 120px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+</style>
+</head>
+<body>
+
+<button id="ptt">Hold to Talk</button>
+<div id="status">disconnected</div>
+<div id="log"></div>
+
+<script>
+const MSG_SDP         = "sdp";
+const MSG_ICE         = "ice";
+const MSG_ANSWER      = "answer";
+const MSG_ERROR       = "error";
+const MSG_SPEAK_START = "s_start";
+const MSG_SPEAK_END   = "s_end";
+
+const statusEl = document.getElementById("status");
+const logEl    = document.getElementById("log");
+const pttBtn   = document.getElementById("ptt");
+
+function log(...args) {
+  console.log(...args);
+  logEl.textContent += args.join(" ") + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+let ws;
+let pc;
+let localStream;
+let audioSender;
+
+const config = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+};
+
+async function start() {
+  statusEl.textContent = "connecting...";
+
+  ws = new WebSocket(`ws://${location.host}/stantion-ws`);
+
+  ws.onopen = async () => {
+    statusEl.textContent = "connected";
+    log("ws open");
+    await setupPeer();
+  };
+
+  ws.onclose = () => {
+    statusEl.textContent = "disconnected";
+    log("ws closed");
+  };
+
+  ws.onerror = (e) => log("ws error", e.message || e);
+
+  ws.onmessage = async (event) => {
+    const msg = JSON.parse(event.data);
+    log("recv", msg.type);
+
+    switch (msg.type) {
+      case MSG_ANSWER:
+        await pc.setRemoteDescription({ type: "answer", sdp: msg.data });
+        break;
+
+      case MSG_ICE:
+        if (msg.ice) {
+          try {
+            await pc.addIceCandidate(msg.ice);
+          } catch (e) {
+            log("ice err", e.message);
+          }
+        }
+        break;
+
+      case MSG_ERROR:
+        log("server error:", msg.data);
+        break;
+    }
+  };
+}
+
+async function setupPeer() {
+  pc = new RTCPeerConnection(config);
+
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  audioSender = pc.addTrack(localStream.getAudioTracks()[0], localStream);
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      ws.send(JSON.stringify({
+        type: MSG_ICE,
+        ice: e.candidate.toJSON()
+      }));
+    }
+  };
+
+  pc.ontrack = (e) => {
+    const audio = new Audio();
+    audio.srcObject = e.streams[0];
+    audio.autoplay = true;
+    log("remote track");
+  };
+
+  pc.onconnectionstatechange = () => {
+    statusEl.textContent = pc.connectionState;
+    log("pc state", pc.connectionState);
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  ws.send(JSON.stringify({
+    type: MSG_SDP,
+    data: offer.sdp
+  }));
+}
+
+function sendSpeak(start) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  ws.send(JSON.stringify({
+    type: start ? MSG_SPEAK_START : MSG_SPEAK_END,
+    data: ""
+  }));
+}
+
+pttBtn.addEventListener("mousedown", () => {
+  pttBtn.classList.add("active");
+  sendSpeak(true);
+});
+pttBtn.addEventListener("mouseup", () => {
+  pttBtn.classList.remove("active");
+  sendSpeak(false);
+});
+pttBtn.addEventListener("mouseleave", () => {
+  if (pttBtn.classList.contains("active")) {
+    pttBtn.classList.remove("active");
+    sendSpeak(false);
+  }
+});
+
+start();
+</script>
+
+</body>
+</html>

@@ -102,6 +102,10 @@ func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 
 func (st *Stantion) Run(port int) {
 	http.HandleFunc("/stantion-ws", st.wsHandler)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "client.html")
+	})
+
 	//TODO server there html which i will use as a walkie talkie client
 	if err := http.ListenAndServe(fmt.Sprintf(":%d", port), nil); err != nil {
 		panic(err)
