@@ -53,12 +53,25 @@
     white-space: pre-wrap;
   }
   .icon { font-size: 22px; }
+  .hint {
+    font-size: 13px;
+    color: #666;
+  }
+  kbd {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: monospace;
+    color: #ccc;
+  }
 </style>
 </head>
 <body>
 
 <button id="ptt"><span class="icon">🎙️</span> Hold to Talk</button>
 <button id="playBtn" class="hidden"><span class="icon">🔊</span> Tap to hear audio</button>
+<div class="hint">or hold <kbd>S</kbd></div>
 <div id="status">disconnected</div>
 <div id="log"></div>
 
@@ -86,6 +99,35 @@ let pc;
 let localStream;
 let remoteAudio;
 let audioReady = false;
+let isTalking = false;   // guards against double-trigger from button + key
+
+let audioCtx;
+
+// Military-style double beep: two quick square-wave pulses.
+function playDoubleBeep(f1, f2, duration = 0.06, gap = 0.07, volume = 0.2) {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === "suspended") audioCtx.resume();
+
+  const now = audioCtx.currentTime;
+
+  [f1, f2].forEach((freq, i) => {
+    const start = now + i * (duration + gap);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+
+    osc.type = "square";
+    osc.frequency.value = freq;
+
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(volume, start + 0.004);
+    gain.gain.setValueAtTime(volume, start + duration - 0.004);
+    gain.gain.linearRampToValueAtTime(0, start + duration);
+
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration);
+  });
+}
 
 const config = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
@@ -98,6 +140,10 @@ function wsSend(obj) {
   }
   ws.send(JSON.stringify(obj));
   return true;
+}
+
+function canTalk() {
+  return ws && ws.readyState === WebSocket.OPEN && pc && pc.connectionState === "connected";
 }
 
 async function start() {
@@ -146,6 +192,14 @@ async function start() {
 
       case MSG_ERROR:
         log("server error:", msg.data);
+        break;
+
+      case MSG_SPEAK_START:
+        playDoubleBeep(1600, 2000);
+        break;
+
+      case MSG_SPEAK_END:
+        playDoubleBeep(2000, 1600);
         break;
     }
   };
@@ -204,18 +258,46 @@ function sendSpeak(start) {
   });
 }
 
-pttBtn.addEventListener("mousedown", () => {
+// --- single entry point for start/stop, used by both button and key ---
+function startTalking() {
+  if (isTalking) return;           // already talking
+  if (!canTalk()) return;
+  isTalking = true;
   pttBtn.classList.add("active");
+  playDoubleBeep(1600, 2000);
   sendSpeak(true);
-});
-pttBtn.addEventListener("mouseup", () => {
+}
+
+function stopTalking() {
+  if (!isTalking) return;          // not talking
+  isTalking = false;
   pttBtn.classList.remove("active");
+  playDoubleBeep(2000, 1600);
   sendSpeak(false);
+}
+
+// --- mouse / touch on the button ---
+pttBtn.addEventListener("mousedown", startTalking);
+pttBtn.addEventListener("mouseup", stopTalking);
+pttBtn.addEventListener("mouseleave", stopTalking);
+
+pttBtn.addEventListener("touchstart", (e) => { e.preventDefault(); startTalking(); }, { passive: false });
+pttBtn.addEventListener("touchend",   (e) => { e.preventDefault(); stopTalking();  }, { passive: false });
+pttBtn.addEventListener("touchcancel", stopTalking);
+
+// --- S key ---
+document.addEventListener("keydown", (e) => {
+  if (e.repeat) return;            // ignore auto-repeat
+  if (e.code === "KeyS") {
+    e.preventDefault();
+    startTalking();
+  }
 });
-pttBtn.addEventListener("mouseleave", () => {
-  if (pttBtn.classList.contains("active")) {
-    pttBtn.classList.remove("active");
-    sendSpeak(false);
+
+document.addEventListener("keyup", (e) => {
+  if (e.code === "KeyS") {
+    e.preventDefault();
+    stopTalking();
   }
 });
 
