@@ -62,9 +62,9 @@ func (st *Stantion) InitPeer(peer *OnePeer) {
 
 func (st *Stantion) peerWsMsgHandler(peer *OnePeer) {
 
-	 defer func() {
+	defer func() {
         peer.ws.Close()
-       // st.Remove(peer)
+        st.Remove(peer)
     }()
 	for {
 		msg := WsMessage{}

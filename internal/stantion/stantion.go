@@ -31,8 +31,10 @@ func (st *Stantion) Get() {
 
 }
 
-func (st *Stantion) Remove() {
-
+func (st *Stantion) Remove(peer *OnePeer) {
+	st.mu.Lock()
+	delete(st.Peers,peer.Id)
+	st.mu.Unlock()
 }
 
 func (st *Stantion) All() []*OnePeer {
