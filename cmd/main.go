@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"wlk_tlk/internal/stantion"
 )
@@ -8,6 +9,10 @@ import (
 func main() {
 
 	fmt.Println("Hello world to webrtc")
+	port := flag.Int("port",8070,"port of ws station")
+
+	flag.Parse()
+
 	stantion := stantion.NewStantion()
-	stantion.Run(8070)
+	stantion.Run(*port)
 }
